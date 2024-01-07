@@ -32,7 +32,7 @@ class Tree:
             next_parent += 1
             n -= 1
 
-    def sample_proposal(self, child, new_sib):
+    def sample_reattach_time(self, child, new_sib):
         sib = self.sibling(child)
         new_sib_parent = self.parent[new_sib]
         new_sib_grandparent = self.grandparent(new_sib)
@@ -52,7 +52,7 @@ class Tree:
                 )
         return ret
 
-    def log_proposal_density(self, child, new_sib, new_time):
+    def log_reattach_density(self, child, new_sib, new_time):
         sib = self.sibling(child)
         new_sib_parent = self.parent[new_sib]
         new_sib_grandparent = self.grandparent(new_sib)
@@ -66,6 +66,29 @@ class Tree:
                 ret = self.time[new_sib] - new_time
             else:
                 ret = -math.log(self.time[new_sib_parent] - self.time[new_sib])
+        return ret
+
+    def resample_times(self):
+        ret = 0
+        lb = 0
+        [sorted_times, ind] = numpy.unique(self.time, return_index=True)
+        for i in range(1, len(sorted_times)):
+            rate = scipy.special.binom(self.sample_size - i + 1, 2)
+            index = ind[i]
+            self.time[index] = lb + random.expovariate(lambd=rate)
+            ret -= rate * (self.time[index] - lb)
+            lb = self.time[index]
+        return ret
+
+    def log_resample_times_density(self, t):
+        ret = 0
+        lb = 0
+        [sorted_times, ind] = numpy.unique(t, return_index=True)
+        for i in range(1, len(sorted_times)):
+            rate = scipy.special.binom(self.sample_size - i + 1, 2)
+            index = ind[i]
+            ret -= rate * (t[index] - lb)
+            lb = t[index]
         return ret
 
     def sample_leaf(self):
@@ -115,10 +138,9 @@ class Tree:
 
     def log_likelihood(self):
         sorted_times = numpy.unique(self.time)
-        sample_size = len(sorted_times)
         ret = 0
-        for i in range(sample_size - 1):
-            ret -= scipy.special.binom(sample_size - i, 2) * (
+        for i in range(self.sample_size - 1):
+            ret -= scipy.special.binom(self.sample_size - i, 2) * (
                 sorted_times[i + 1] - sorted_times[i]
             )
         return ret

@@ -7,7 +7,8 @@ from tree import Tree
 
 
 def kingman_mcmc(tree, recorder):
-    acceptance_prob = 0
+    acceptance_prob_spr = 0
+    acceptance_prob_times = 0
     log_likelihood = tree.log_likelihood()
     steps = int(recorder.tables.sequence_length) - 1
 
@@ -15,24 +16,34 @@ def kingman_mcmc(tree, recorder):
         child = tree.sample_leaf()
         parent = tree.parent[child]
         sib = tree.sibling(child)
-
-        new_sib = tree.sample_node()
-        while new_sib in [child, parent]:
-            new_sib = tree.sample_node()
-
-        new_time = tree.sample_proposal(child, new_sib)
-        alpha = -tree.log_proposal_density(child, new_sib, new_time)
+        new_sib = sib
+        if tree.sample_size > 2:
+            while new_sib in [child, parent, sib]:
+                new_sib = tree.sample_node()
+        new_time = tree.sample_reattach_time(child, new_sib)
+        alpha = -tree.log_reattach_density(child, new_sib, new_time)
         old_time = tree.time[parent]
         tree.detach_reattach(child, new_sib, new_time)
-        alpha += tree.log_proposal_density(child, sib, old_time)
+        alpha += tree.log_reattach_density(child, sib, old_time)
         proposal_log_likelihood = tree.log_likelihood()
         alpha += proposal_log_likelihood - log_likelihood
-
         if math.log(random.random()) < alpha:
-            recorder.store_spr(tree, child, sib)
             log_likelihood = proposal_log_likelihood
-            acceptance_prob += 1 / steps
+            acceptance_prob_spr += 1 / steps
         else:
             tree.detach_reattach(child, sib, old_time)
-            recorder.increment_site()
-    return acceptance_prob
+
+        old_times = tree.time.copy()
+        alpha = -tree.resample_times()
+        proposal_log_likelihood = tree.log_likelihood()
+        alpha += tree.log_resample_times_density(old_times)
+        alpha += proposal_log_likelihood - log_likelihood
+        if math.log(random.random()) < alpha:
+            log_likelihood = proposal_log_likelihood
+            acceptance_prob_times += 1 / steps
+        else:
+            tree.time = old_times.copy()
+
+        recorder.append_tree(tree)
+
+    return [acceptance_prob_spr, acceptance_prob_times]
